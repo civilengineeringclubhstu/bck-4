@@ -15,7 +15,7 @@ export default function FooterPage() {
     email: "",
     phone: "",
     facebookUrl: "",
-    twitterUrl: "",
+    linkedinUrl: "",
     youtubeUrl: "",
     instagramUrl: "",
   });
@@ -32,7 +32,7 @@ export default function FooterPage() {
             email: data.email || "",
             phone: data.phone || "",
             facebookUrl: data.facebookUrl || "",
-            twitterUrl: data.twitterUrl || "",
+            linkedinUrl: data.linkedinUrl || "",
             youtubeUrl: data.youtubeUrl || "",
             instagramUrl: data.instagramUrl || "",
           });
@@ -129,12 +129,12 @@ export default function FooterPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">X (Twitter)</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">LinkedIn</label>
                   <input
                     type="url"
                     className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm p-3 border"
-                    value={formData.twitterUrl}
-                    onChange={(e) => setFormData({ ...formData, twitterUrl: e.target.value })}
+                    value={formData.linkedinUrl}
+                    onChange={(e) => setFormData({ ...formData, linkedinUrl: e.target.value })}
                   />
                 </div>
                 <div>

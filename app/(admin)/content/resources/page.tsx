@@ -66,7 +66,19 @@ export default function ResourcesPage() {
             <div className="space-y-4">
               <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Title</label><input required className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">File Type (e.g. pdf)</label><input required className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.fileType} onChange={e=>setFormData({...formData, fileType:e.target.value})} /></div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">File Type</label>
+                  <select required className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.fileType} onChange={e=>setFormData({...formData, fileType:e.target.value})}>
+                    <option value="">Select a type...</option>
+                    <option value="PDF">PDF</option>
+                    <option value="DOCX">DOCX (Word)</option>
+                    <option value="XLSX">XLSX (Excel)</option>
+                    <option value="ZIP">ZIP</option>
+                    <option value="MP4">MP4 (Video)</option>
+                    <option value="CODE">Code/Link</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
                 <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Category Tag</label><input required className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.categoryTag} onChange={e=>setFormData({...formData, categoryTag:e.target.value})} /></div>
               </div>
               <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Cover Image URL</label><input type="url" className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.coverImageUrl} onChange={e=>setFormData({...formData, coverImageUrl:e.target.value})} /></div>

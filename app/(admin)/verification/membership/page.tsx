@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react";
 import { collection, getDocs, setDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Trash2, Edit2, Plus } from "lucide-react";
+import Papa from "papaparse";
+import { Trash2, Edit2, Plus, Upload } from "lucide-react";
 
 export default function MembershipPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -30,13 +31,49 @@ export default function MembershipPage() {
     fetchItems();
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const promises = results.data.map((row: any) => {
+            const id = row.membershipId;
+            if (!id) return null;
+            return setDoc(doc(db, "memberships", id), {
+              membershipId: id,
+              name: row.name || "",
+              description: row.description || "",
+              issueDate: row.issueDate || "",
+              createdAt: Date.now()
+            });
+          });
+          await Promise.all(promises.filter(Boolean));
+          alert("CSV Uploaded successfully!");
+          fetchItems();
+        } catch (err: any) {
+          alert("Error uploading CSV: " + err.message);
+        }
+      }
+    });
+  };
+
   return (
     <div className="flex flex-col h-full font-inter">
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-3xl font-montserrat font-bold text-[#0F172A] tracking-tight">Memberships</h2>
-        <button onClick={() => { setFormData({membershipId:"", name:"", description:"", issueDate:""}); setEditingId(null); setIsModalOpen(true); }} className="bg-[#F59E0B] text-white px-6 h-14 rounded-[18px] font-semibold flex items-center gap-2 hover:scale-[1.03] shadow-[0_10px_40px_rgba(245,158,11,0.3)] transition-all">
-          <Plus className="h-5 w-5" /> Add Member
-        </button>
+        <div className="flex gap-4">
+          <label className="cursor-pointer bg-blue-600 text-white px-6 h-14 rounded-[18px] font-semibold flex items-center gap-2 hover:scale-[1.03] shadow-[0_10px_40px_rgba(37,99,235,0.3)] transition-all">
+            <Upload className="h-5 w-5" /> Bulk Upload CSV
+            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+          </label>
+          <button onClick={() => { setFormData({membershipId:"", name:"", description:"", issueDate:""}); setEditingId(null); setIsModalOpen(true); }} className="bg-[#F59E0B] text-white px-6 h-14 rounded-[18px] font-semibold flex items-center gap-2 hover:scale-[1.03] shadow-[0_10px_40px_rgba(245,158,11,0.3)] transition-all">
+            <Plus className="h-5 w-5" /> Add Member
+          </button>
+        </div>
       </div>
       <div className="space-y-4 overflow-y-auto pb-8">
         {items.map(item => (

@@ -60,7 +60,6 @@ const navigation = [
   {
     name: "Contact",
     items: [
-      { name: "Form Entries", href: "/contact/form", icon: Mail },
       { name: "Location", href: "/contact/location", icon: MapPin },
       { name: "FAQ", href: "/contact/faq", icon: HelpCircle },
     ],

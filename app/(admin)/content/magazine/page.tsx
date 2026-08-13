@@ -9,7 +9,7 @@ export default function MagazinePage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ title: "", coverImageUrl: "", pdfUrl: "" });
+  const [formData, setFormData] = useState({ title: "", description: "", coverImageUrl: "", pdfUrl: "" });
 
   useEffect(() => { fetchItems(); }, []);
   const fetchItems = async () => {
@@ -35,7 +35,7 @@ export default function MagazinePage() {
     <div className="flex flex-col h-full font-inter">
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-3xl font-montserrat font-bold text-[#0F172A] tracking-tight">Magazine</h2>
-        <button onClick={() => { setFormData({title:"", coverImageUrl:"", pdfUrl:""}); setEditingId(null); setIsModalOpen(true); }} className="bg-[#F59E0B] text-white px-6 h-14 rounded-[18px] font-semibold flex items-center gap-2 hover:scale-[1.03] shadow-[0_10px_40px_rgba(245,158,11,0.3)] transition-all">
+        <button onClick={() => { setFormData({title:"", description:"", coverImageUrl:"", pdfUrl:""}); setEditingId(null); setIsModalOpen(true); }} className="bg-[#F59E0B] text-white px-6 h-14 rounded-[18px] font-semibold flex items-center gap-2 hover:scale-[1.03] shadow-[0_10px_40px_rgba(245,158,11,0.3)] transition-all">
           <Plus className="h-5 w-5" /> Add Magazine
         </button>
       </div>
@@ -61,6 +61,7 @@ export default function MagazinePage() {
             <h3 className="text-2xl font-bold font-montserrat tracking-tight mb-6">{editingId ? 'Edit' : 'Add'} Magazine</h3>
             <div className="space-y-4">
               <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Title</label><input required className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.title} onChange={e=>setFormData({...formData, title:e.target.value})} /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Description</label><textarea required rows={3} className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.description} onChange={e=>setFormData({...formData, description:e.target.value})} /></div>
               <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Cover Image URL</label><input required type="url" className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.coverImageUrl} onChange={e=>setFormData({...formData, coverImageUrl:e.target.value})} /></div>
               <div><label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">PDF URL</label><input required type="url" className="w-full bg-slate-50 border border-slate-200 rounded-[18px] p-4 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.pdfUrl} onChange={e=>setFormData({...formData, pdfUrl:e.target.value})} /></div>
             </div>
