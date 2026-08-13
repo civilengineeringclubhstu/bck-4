@@ -95,8 +95,8 @@ export default function LogPage() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020617]/40 backdrop-blur-sm p-4 overflow-y-auto">
-          <form onSubmit={handleSave} className="bg-white/95 backdrop-blur-3xl border border-white/40 p-8 rounded-[32px] w-full max-w-2xl shadow-[0_25px_60px_rgba(0,0,0,0.45)] my-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-[#020617]/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <form onSubmit={handleSave} className="bg-white/95 backdrop-blur-3xl border border-white/40 p-8 rounded-[32px] w-full max-w-2xl shadow-[0_25px_60px_rgba(0,0,0,0.45)] my-8 mt-24">
             <h3 className="text-2xl font-bold font-montserrat tracking-tight mb-6">{editingId ? 'Edit' : 'Add'} Event Log</h3>
             
             <div className="space-y-4">

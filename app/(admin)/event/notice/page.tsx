@@ -152,7 +152,7 @@ export default function NoticePage() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black bg-opacity-50 overflow-y-auto">
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-xl my-8">
             <h3 className="text-lg font-bold text-slate-900 mb-6">{editingId ? "Edit Notice" : "Add Notice"}</h3>
             <form onSubmit={handleCreateOrUpdate} className="space-y-5">
