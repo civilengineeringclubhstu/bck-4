@@ -214,7 +214,7 @@ export default function CertificatePage() {
   const someVisibleSelected = filteredItems.some(i => selectedIds.includes(i.id));
 
   return (
-    <div className="flex flex-col h-full font-inter space-y-6 pb-12">
+    <div className="flex flex-col font-inter space-y-6 pb-28">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -318,7 +318,7 @@ export default function CertificatePage() {
       )}
 
       {/* Cards List */}
-      <div className="space-y-4 overflow-y-auto pb-8">
+      <div className="space-y-4 pb-16">
         {loading ? (
           <div className="py-20 text-center text-slate-400">
             <div className="animate-spin w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-3" />

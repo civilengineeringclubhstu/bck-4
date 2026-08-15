@@ -13,7 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden relative z-10 p-4 lg:p-8">
         <div className="flex-1 overflow-auto bg-white/55 backdrop-blur-[24px] border border-white/35 shadow-[0_10px_40px_rgba(15,23,42,0.08)] rounded-[28px]">
-          <div className="p-6 h-full">
+          <div className="p-4 sm:p-6 min-h-full">
             {children}
           </div>
         </div>
