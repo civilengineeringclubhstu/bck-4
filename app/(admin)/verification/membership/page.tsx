@@ -17,7 +17,6 @@ import {
   Facebook, 
   Linkedin, 
   Mail, 
-  Phone, 
   CheckCircle2, 
   SlidersHorizontal, 
   RefreshCw, 
@@ -40,9 +39,7 @@ interface Member {
   facebookUrl?: string;
   linkedinUrl?: string;
   email?: string;
-  phone?: string;
   department?: string;
-  description?: string;
   issueDate: string;
   createdAt: number;
 }
@@ -86,9 +83,7 @@ export default function MembershipPage() {
     facebookUrl: "",
     linkedinUrl: "",
     email: "",
-    phone: "",
     department: "Civil Engineering",
-    description: "",
     issueDate: new Date().toISOString().split("T")[0],
   });
 
@@ -126,9 +121,7 @@ export default function MembershipPage() {
           facebookUrl: data.facebookUrl || "",
           linkedinUrl: data.linkedinUrl || "",
           email: data.email || "",
-          phone: data.phone || "",
           department: data.department || "Civil Engineering",
-          description: data.description || "",
           issueDate: data.issueDate || "",
           createdAt: data.createdAt || 0,
         } as Member;
@@ -333,9 +326,7 @@ export default function MembershipPage() {
         facebookUrl: formData.facebookUrl.trim(),
         linkedinUrl: formData.linkedinUrl.trim(),
         email: formData.email.trim(),
-        phone: formData.phone.trim(),
         department: formData.department.trim(),
-        description: formData.description.trim(),
         issueDate: formData.issueDate,
         createdAt: existing ? existing.createdAt : now,
       };
@@ -370,9 +361,7 @@ export default function MembershipPage() {
       facebookUrl: member.facebookUrl || "",
       linkedinUrl: member.linkedinUrl || "",
       email: member.email || "",
-      phone: member.phone || "",
       department: member.department || "Civil Engineering",
-      description: member.description || "",
       issueDate: member.issueDate || new Date().toISOString().split("T")[0],
     });
     setEditingId(member.id);
@@ -389,9 +378,7 @@ export default function MembershipPage() {
       facebookUrl: "",
       linkedinUrl: "",
       email: "",
-      phone: "",
       department: "Civil Engineering",
-      description: "",
       issueDate: new Date().toISOString().split("T")[0],
     });
     setEditingId(null);
@@ -462,9 +449,7 @@ export default function MembershipPage() {
               facebookUrl: row.facebookUrl || "",
               linkedinUrl: row.linkedinUrl || "",
               email: row.email || "",
-              phone: row.phone || "",
               department: row.department || "Civil Engineering",
-              description: row.description || "",
               issueDate: row.issueDate || new Date().toISOString().split("T")[0],
               createdAt: Date.now(),
             });
@@ -484,9 +469,9 @@ export default function MembershipPage() {
   };
 
   const handleDownloadTemplate = () => {
-    const headers = "membershipId,name,batch,designation,photoUrl,facebookUrl,linkedinUrl,email,phone,department,description,issueDate\n";
-    const sample1 = "MEM-2024-001,Rahim Ahmed,21,General Member,https://picsum.photos/400,https://facebook.com,https://linkedin.com,rahim@example.com,01700000000,Civil Engineering,Active Member,2024-01-15\n";
-    const sample2 = "MEM-2022-045,Sadia Islam,18,Former Executive,https://picsum.photos/400,https://facebook.com,https://linkedin.com,sadia@example.com,01800000000,Civil Engineering,Graduated Batch 18,2022-03-10\n";
+    const headers = "membershipId,name,batch,designation,photoUrl,facebookUrl,linkedinUrl,email,department,issueDate\n";
+    const sample1 = "MEM-2024-001,Rahim Ahmed,21,General Member,https://picsum.photos/400,https://facebook.com,https://linkedin.com,rahim@example.com,Civil Engineering,2024-01-15\n";
+    const sample2 = "MEM-2022-045,Sadia Islam,18,Former Executive,https://picsum.photos/400,https://facebook.com,https://linkedin.com,sadia@example.com,Civil Engineering,2022-03-10\n";
     
     const blob = new Blob([headers + sample1 + sample2], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -947,7 +932,7 @@ export default function MembershipPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
                     Facebook URL
@@ -973,7 +958,9 @@ export default function MembershipPage() {
                     onChange={(e) => setFormData({ ...formData, linkedinUrl: e.target.value })}
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
                     Email Address
@@ -984,20 +971,6 @@ export default function MembershipPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-[16px] p-3.5 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                    Phone Number
-                  </label>
-                  <input
-                    placeholder="017XXXXXXXX"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-[16px] p-3.5 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                 </div>
 
@@ -1012,19 +985,6 @@ export default function MembershipPage() {
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                  Description / Bio / Notes
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Additional notes about member..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-[16px] p-3.5 text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
               </div>
             </div>
 
@@ -1258,12 +1218,6 @@ function HorizontalMemberCard({
           )}
         </div>
 
-        {member.description && (
-          <p className="text-xs text-slate-500 line-clamp-1 italic">
-            &ldquo;{member.description}&rdquo;
-          </p>
-        )}
-
         {/* Social Links */}
         <div className="flex items-center gap-2 pt-1">
           {member.facebookUrl && (
@@ -1295,15 +1249,6 @@ function HorizontalMemberCard({
               title={member.email}
             >
               <Mail className="w-3.5 h-3.5" />
-            </a>
-          )}
-          {member.phone && (
-            <a
-              href={`tel:${member.phone}`}
-              className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white flex items-center justify-center transition-colors shadow-sm"
-              title={member.phone}
-            >
-              <Phone className="w-3.5 h-3.5" />
             </a>
           )}
         </div>
