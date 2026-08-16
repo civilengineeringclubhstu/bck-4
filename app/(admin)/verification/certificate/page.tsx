@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, setDoc, deleteDoc, doc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import Papa from "papaparse";
+import { SmartCsvImporter, TargetFieldDef } from "@/components/smart-csv-importer";
 import { 
   Trash2, 
   Edit2, 
@@ -17,8 +17,43 @@ import {
   X, 
   Calendar, 
   Copy, 
-  FileCheck
+  FileCheck,
+  FileSpreadsheet
 } from "lucide-react";
+
+const CERTIFICATE_TARGET_FIELDS: TargetFieldDef[] = [
+  {
+    key: "name",
+    label: "Recipient Full Name",
+    required: true,
+    synonyms: ["name", "fullname", "full_name", "recipientname", "studentname", "nameofrecipient", "participantname", "applicantname", "name_of_participant", "yourname"]
+  },
+  {
+    key: "certificateId",
+    label: "Certificate ID / Code",
+    required: false,
+    synonyms: ["certificateid", "certificate_id", "certid", "cert_id", "credentialid", "code", "id", "certificateno", "certificate_number", "idnumber", "regno"]
+  },
+  {
+    key: "description",
+    label: "Certificate Title / Description",
+    required: true,
+    synonyms: ["description", "title", "certificatetitle", "eventname", "event", "competition", "course", "workshop", "reason", "awardtitle", "workshopname", "details"]
+  },
+  {
+    key: "issueDate",
+    label: "Issue Date",
+    required: false,
+    defaultValue: new Date().toISOString().split("T")[0],
+    synonyms: ["issuedate", "issue_date", "date", "dateissued", "certificationdate", "issuedat", "date_issued"]
+  },
+  {
+    key: "score",
+    label: "Score / Marks / Position (Optional)",
+    required: false,
+    synonyms: ["score", "marks", "grade", "percentage", "position", "rank", "result", "points"]
+  }
+];
 
 interface Certificate {
   id: string;
@@ -34,6 +69,7 @@ export default function CertificatePage() {
   const [items, setItems] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCsvImporterOpen, setIsCsvImporterOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -171,37 +207,40 @@ export default function CertificatePage() {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleSmartCsvImport = async (rows: Record<string, any>[]) => {
+    let count = 0;
+    const chunkSize = 450;
+    const currentYear = new Date().getFullYear();
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          let count = 0;
-          const promises = results.data.map((row: any) => {
-            const id = (row.certificateId || row.id || "").trim();
-            if (!id) return null;
-            count++;
-            return setDoc(doc(db, "certificates", id), {
-              certificateId: id,
-              name: row.name || "",
-              description: row.description || "",
-              issueDate: row.issueDate || new Date().toISOString().split("T")[0],
-              score: row.score ? Number(row.score) : null,
-              createdAt: Date.now()
-            });
-          });
-          await Promise.all(promises.filter(Boolean));
-          alert(`CSV Uploaded successfully! Imported ${count} certificates.`);
-          fetchItems();
-        } catch (err: any) {
-          alert("Error uploading CSV: " + err.message);
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+
+      chunk.forEach((row, idx) => {
+        let id = (row.certificateId || "").trim();
+        if (!id) {
+          const seq = String(i + idx + 1).padStart(3, "0");
+          id = `CERT-${currentYear}-${seq}`;
         }
-      }
-    });
+
+        const docRef = doc(db, "certificates", id);
+        batch.set(docRef, {
+          certificateId: id,
+          name: row.name || "",
+          description: row.description || "",
+          issueDate: row.issueDate || new Date().toISOString().split("T")[0],
+          score: row.score ? Number(row.score) : null,
+          createdAt: Date.now(),
+          ...(row._extraRawFields ? { extraFields: row._extraRawFields } : {})
+        }, { merge: true });
+        count++;
+      });
+
+      await batch.commit();
+    }
+
+    await fetchItems();
+    return { count };
   };
 
   const copyToClipboard = (text: string) => {
@@ -228,11 +267,13 @@ export default function CertificatePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <label className="cursor-pointer bg-white border border-slate-200 text-slate-700 px-5 h-12 rounded-[16px] font-semibold text-sm flex items-center gap-2 hover:bg-slate-50 shadow-sm transition-all">
+          <button
+            onClick={() => setIsCsvImporterOpen(true)}
+            className="bg-white border border-slate-200 text-slate-700 px-5 h-12 rounded-[16px] font-semibold text-sm flex items-center gap-2 hover:bg-slate-50 shadow-sm transition-all"
+          >
             <Upload className="h-4 w-4 text-slate-500" />
             Bulk Upload CSV
-            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
-          </label>
+          </button>
 
           <button 
             onClick={() => { 
@@ -526,6 +567,29 @@ export default function CertificatePage() {
           </form>
         </div>
       )}
+
+      {/* Smart CSV Importer */}
+      <SmartCsvImporter
+        isOpen={isCsvImporterOpen}
+        onClose={() => setIsCsvImporterOpen(false)}
+        title="Import Certificates (CSV)"
+        description="Smart column mapping for Workshop, Event, Contest, or Recognition Certificates from Google Forms or spreadsheets."
+        targetFields={CERTIFICATE_TARGET_FIELDS}
+        idFieldKey="certificateId"
+        idPrefix="CERT-"
+        defaultValues={{
+          issueDate: new Date().toISOString().split("T")[0]
+        }}
+        sampleTemplateData={{
+          headers: ["Timestamp", "Certificate ID", "Recipient Full Name", "Certificate Title / Event", "Issue Date", "Score / Position"],
+          sampleRows: [
+            ["2024-01-15 10:20:30", "CERT-2024-001", "Mahmudul Hasan", "AutoCAD Workshop 2024 - Certificate of Completion", "2024-01-15", "92"],
+            ["2024-01-15 11:30:15", "CERT-2024-002", "Sadia Afrin", "Bridge Building Competition - Champion", "2024-02-20", "1st Place"]
+          ],
+          filename: "certificate_sample_template.csv"
+        }}
+        onImport={handleSmartCsvImport}
+      />
     </div>
   );
 }

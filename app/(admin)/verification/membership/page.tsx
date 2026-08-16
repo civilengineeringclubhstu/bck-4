@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, getDocs, setDoc, deleteDoc, doc, getDoc, addDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import Papa from "papaparse";
+import { SmartCsvImporter, TargetFieldDef } from "@/components/smart-csv-importer";
 import { 
   Trash2, 
   Edit2, 
@@ -26,8 +26,75 @@ import {
   CheckSquare,
   Square,
   MinusSquare,
+  FileSpreadsheet,
   X
 } from "lucide-react";
+
+const MEMBERSHIP_TARGET_FIELDS: TargetFieldDef[] = [
+  {
+    key: "name",
+    label: "Full Name",
+    required: true,
+    synonyms: ["fullname", "full_name", "name", "studentname", "membername", "leadername", "alumniname", "nameofstudent", "applicantname", "yourname", "name_of_applicant", "name_of_student"]
+  },
+  {
+    key: "membershipId",
+    label: "Membership ID",
+    required: false,
+    synonyms: ["membershipid", "membership_id", "memberid", "member_id", "membershipno", "studentid", "student_id", "id", "idnumber", "roll", "regno", "registrationno", "userid", "cardno", "id_number"]
+  },
+  {
+    key: "batch",
+    label: "Batch",
+    required: true,
+    synonyms: ["batch", "batchno", "batch_no", "batchnumber", "session", "intake", "passingyear", "deptbatch", "hscbatch", "batch_number"]
+  },
+  {
+    key: "designation",
+    label: "Designation / Role",
+    required: false,
+    defaultValue: "General Member",
+    synonyms: ["designation", "role", "position", "currentdesignation", "jobtitle", "post", "committeepost", "status", "membershipstatus", "alumnidesignation", "designationposition"]
+  },
+  {
+    key: "photoUrl",
+    label: "Photo / Image URL",
+    required: false,
+    synonyms: ["uploadphoto", "photo", "image", "photourl", "imageurl", "picture", "profilepicture", "avatar", "drivelink", "photolink", "uploadyourphoto", "profilephoto", "photo_url", "image_url", "linkofphoto", "photodrivelink"]
+  },
+  {
+    key: "facebookUrl",
+    label: "Facebook Profile URL",
+    required: false,
+    synonyms: ["facebookprofileurl", "facebookurl", "facebooklink", "facebook", "fbprofile", "fblink", "fb", "fbprofileurl", "socialfb", "facebook_profile_url", "facebook_url"]
+  },
+  {
+    key: "linkedinUrl",
+    label: "LinkedIn Profile URL",
+    required: false,
+    synonyms: ["linkedinprofileurl", "linkedinurl", "linkedinlink", "linkedin", "liprofile", "linkedinprofile", "sociallinkedin", "linkedin_profile_url", "linkedin_url"]
+  },
+  {
+    key: "email",
+    label: "Email Address",
+    required: false,
+    synonyms: ["emailaddress", "email", "email_address", "e_mail", "mail", "gmail", "contactemail", "email_id"]
+  },
+  {
+    key: "department",
+    label: "Department",
+    required: false,
+    defaultValue: "Civil Engineering",
+    synonyms: ["department", "dept", "discipline", "program", "major", "fieldofstudy", "departmentname", "dept_name"]
+  },
+  {
+    key: "issueDate",
+    label: "Issue Date",
+    required: false,
+    defaultValue: new Date().toISOString().split("T")[0],
+    synonyms: ["issuedate", "issue_date", "date", "issuedat", "joiningdate", "admissiondate", "dateissued", "date_issued"]
+  }
+];
 
 interface Member {
   id: string;
@@ -55,6 +122,7 @@ export default function MembershipPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isCsvImporterOpen, setIsCsvImporterOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "active" | "alumni">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -425,47 +493,47 @@ export default function MembershipPage() {
     }
   };
 
-  // CSV Bulk Upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Smart CSV Bulk Import Handler (handles any Google Form or Excel sheet format)
+  const handleSmartCsvImport = async (rows: Record<string, any>[]) => {
+    let count = 0;
+    const chunkSize = 450;
+    const currentYear = new Date().getFullYear();
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          let count = 0;
-          const promises = results.data.map((row: any) => {
-            const id = (row.membershipId || row.id || "").trim();
-            if (!id) return null;
-            count++;
-            return setDoc(doc(db, "memberships", id), {
-              membershipId: id,
-              name: row.name || "",
-              batch: row.batch ? String(row.batch) : "",
-              designation: row.designation || "General Member",
-              photoUrl: row.photoUrl || "",
-              facebookUrl: row.facebookUrl || "",
-              linkedinUrl: row.linkedinUrl || "",
-              email: row.email || "",
-              department: row.department || "Civil Engineering",
-              issueDate: row.issueDate || new Date().toISOString().split("T")[0],
-              createdAt: Date.now(),
-            });
-          });
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
 
-          await Promise.all(promises.filter(Boolean));
-          alert(`CSV Uploaded successfully! Imported ${count} members.`);
-          fetchItems();
-        } catch (err: any) {
-          alert("Error uploading CSV: " + err.message);
+      chunk.forEach((row, idx) => {
+        let id = (row.membershipId || "").trim();
+        if (!id) {
+          const batchStr = row.batch ? String(row.batch) : String(currentYear).slice(-2);
+          const seq = String(i + idx + 1).padStart(3, "0");
+          id = `MEM-${batchStr}-${seq}`;
         }
-      },
-      error: (err) => {
-        alert("Failed to parse CSV file: " + err.message);
-      },
-    });
+
+        const docRef = doc(db, "memberships", id);
+        batch.set(docRef, {
+          membershipId: id,
+          name: row.name || "",
+          batch: row.batch ? String(row.batch) : "",
+          designation: row.designation || "General Member",
+          photoUrl: row.photoUrl || "",
+          facebookUrl: row.facebookUrl || "",
+          linkedinUrl: row.linkedinUrl || "",
+          email: row.email || "",
+          department: row.department || "Civil Engineering",
+          issueDate: row.issueDate || new Date().toISOString().split("T")[0],
+          createdAt: Date.now(),
+          ...(row._extraRawFields ? { extraFields: row._extraRawFields } : {})
+        }, { merge: true });
+        count++;
+      });
+
+      await batch.commit();
+    }
+
+    await fetchItems();
+    return { count };
   };
 
   const handleDownloadTemplate = () => {
@@ -561,10 +629,12 @@ export default function MembershipPage() {
             CSV Template
           </button>
 
-          <label className="cursor-pointer bg-blue-600 text-white px-5 h-12 rounded-[16px] font-semibold text-sm flex items-center gap-2 hover:scale-[1.02] shadow-[0_10px_30px_rgba(37,99,235,0.25)] transition-all">
+          <button
+            onClick={() => setIsCsvImporterOpen(true)}
+            className="bg-blue-600 text-white px-5 h-12 rounded-[16px] font-semibold text-sm flex items-center gap-2 hover:scale-[1.02] shadow-[0_10px_30px_rgba(37,99,235,0.25)] transition-all"
+          >
             <Upload className="h-4 w-4" /> Bulk Upload CSV
-            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
-          </label>
+          </button>
 
           <button
             onClick={() => { resetForm(); setIsModalOpen(true); }}
@@ -1097,6 +1167,31 @@ export default function MembershipPage() {
           </form>
         </div>
       )}
+
+      {/* Smart CSV Importer Modal */}
+      <SmartCsvImporter
+        isOpen={isCsvImporterOpen}
+        onClose={() => setIsCsvImporterOpen(false)}
+        title="Import Members & Alumni (CSV)"
+        description="Smart auto-detection for Google Forms, Excel exports, or customized sheets with column mapping & live preview."
+        targetFields={MEMBERSHIP_TARGET_FIELDS}
+        idFieldKey="membershipId"
+        idPrefix="MEM-"
+        defaultValues={{
+          department: "Civil Engineering",
+          designation: "General Member",
+          issueDate: new Date().toISOString().split("T")[0]
+        }}
+        sampleTemplateData={{
+          headers: ["Timestamp", "Membership ID", "Full Name", "Batch", "Designation", "Upload Photo", "Facebook Profile URL", "LinkedIn Profile URL", "Email Address", "Department", "Issue Date"],
+          sampleRows: [
+            ["2024-01-15 10:20:30", "MEM-2024-001", "Rahim Ahmed", "21", "General Member", "https://picsum.photos/400", "https://facebook.com/rahim", "https://linkedin.com/in/rahim", "rahim@example.com", "Civil Engineering", "2024-01-15"],
+            ["2024-01-15 11:45:12", "MEM-2022-045", "Sadia Islam", "18", "Alumni / Former Executive", "https://picsum.photos/401", "https://facebook.com/sadia", "https://linkedin.com/in/sadia", "sadia@example.com", "Civil Engineering", "2022-03-10"]
+          ],
+          filename: "membership_sample_template.csv"
+        }}
+        onImport={handleSmartCsvImport}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { SmartCsvImporter, TargetFieldDef } from "@/components/smart-csv-importer";
 import { 
   Trash2, 
   Edit2, 
@@ -17,9 +18,61 @@ import {
   GraduationCap, 
   UserCheck, 
   SlidersHorizontal,
+  FileSpreadsheet,
   X
 } from "lucide-react";
-import Papa from "papaparse";
+
+const LEADERSHIP_TARGET_FIELDS: TargetFieldDef[] = [
+  {
+    key: "name",
+    label: "Full Name",
+    required: true,
+    synonyms: ["name", "fullname", "full_name", "leadername", "membername", "nameofmember", "applicantname", "name_of_applicant", "yourname", "name_of_student"]
+  },
+  {
+    key: "designation",
+    label: "Designation / Position",
+    required: true,
+    synonyms: ["designation", "position", "role", "jobtitle", "post", "title", "designation_position", "committeepost", "status"]
+  },
+  {
+    key: "type",
+    label: "Category (executive/alumni/advisory/taskforce)",
+    required: false,
+    defaultValue: "executive",
+    synonyms: ["type", "membertype", "category", "committeetype", "role_type", "wing", "group", "tier"]
+  },
+  {
+    key: "batch",
+    label: "Batch",
+    required: false,
+    synonyms: ["batch", "batchno", "batch_no", "session", "intake", "batchnumber"]
+  },
+  {
+    key: "photoUrl",
+    label: "Photo / Image URL",
+    required: false,
+    synonyms: ["uploadphoto", "photo", "image", "photourl", "imageurl", "picture", "profilepicture", "avatar", "drivelink", "photolink", "uploadyourphoto", "photo_url", "image_url"]
+  },
+  {
+    key: "facebookUrl",
+    label: "Facebook Profile URL",
+    required: false,
+    synonyms: ["facebookprofileurl", "facebookurl", "facebooklink", "facebook", "fbprofile", "fblink", "fb", "facebook_profile_url", "facebook_url"]
+  },
+  {
+    key: "linkedinUrl",
+    label: "LinkedIn Profile URL",
+    required: false,
+    synonyms: ["linkedinprofileurl", "linkedinurl", "linkedinlink", "linkedin", "liprofile", "linkedinprofile", "linkedin_profile_url", "linkedin_url"]
+  },
+  {
+    key: "email",
+    label: "Email Address",
+    required: false,
+    synonyms: ["emailaddress", "email", "email_address", "e_mail", "mail", "gmail", "contactemail", "email_id"]
+  }
+];
 
 interface Leader {
   id: string;
@@ -39,6 +92,7 @@ export default function LeadershipPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCsvImporterOpen, setIsCsvImporterOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
   // Selection state
@@ -229,46 +283,43 @@ export default function LeadershipPage() {
     setEditingId(null);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleSmartCsvImport = async (rows: Record<string, any>[]) => {
+    let count = 0;
+    const chunkSize = 450;
 
-    setIsUploadingCSV(true);
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          const promises = results.data.map((row: any) => {
-            const rowType = row.type || "executive";
-            return addDoc(collection(db, "leadership_members"), {
-              name: row.name || "",
-              batch: rowType === "advisory" ? "A" : (row.batch || ""),
-              designation: row.designation || "",
-              photoUrl: row.photoUrl || "",
-              facebookUrl: row.facebookUrl || "",
-              linkedinUrl: row.linkedinUrl || "",
-              email: row.email || "",
-              type: rowType,
-              createdAt: Date.now()
-            });
-          });
-          await Promise.all(promises);
-          fetchLeaders();
-          alert("CSV Uploaded Successfully!");
-        } catch (err: any) {
-          console.error("Error parsing CSV:", err);
-          alert(err.message || "Failed to upload CSV. Check database permissions.");
-        } finally {
-          setIsUploadingCSV(false);
-        }
-      },
-      error: (error) => {
-        console.error("CSV Parse Error:", error);
-        alert(error.message || "Failed to parse CSV file.");
-        setIsUploadingCSV(false);
-      }
-    });
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+
+      chunk.forEach((row) => {
+        let rawType = (row.type || "executive").toString().toLowerCase().trim();
+        let normalizedType: "executive" | "alumni" | "advisory" | "taskforce" = "executive";
+        if (rawType.includes("alumn")) normalizedType = "alumni";
+        else if (rawType.includes("advis")) normalizedType = "advisory";
+        else if (rawType.includes("task")) normalizedType = "taskforce";
+        else normalizedType = "executive";
+
+        const docRef = doc(collection(db, "leadership_members"));
+        batch.set(docRef, {
+          name: row.name || "",
+          batch: normalizedType === "advisory" ? "A" : (row.batch ? String(row.batch) : ""),
+          designation: row.designation || (normalizedType === "alumni" ? "Alumni Member" : "Executive Member"),
+          photoUrl: row.photoUrl || "",
+          facebookUrl: row.facebookUrl || "",
+          linkedinUrl: row.linkedinUrl || "",
+          email: row.email || "",
+          type: normalizedType,
+          createdAt: Date.now(),
+          ...(row._extraRawFields ? { extraFields: row._extraRawFields } : {})
+        });
+        count++;
+      });
+
+      await batch.commit();
+    }
+
+    await fetchLeaders();
+    return { count };
   };
 
   const allVisibleSelected = filteredLeaders.length > 0 && filteredLeaders.every(l => selectedIds.includes(l.id));
@@ -289,11 +340,13 @@ export default function LeadershipPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <label className="bg-white border border-slate-200 text-slate-700 px-5 h-12 rounded-[16px] font-semibold text-sm flex items-center gap-2 hover:bg-slate-50 shadow-sm cursor-pointer transition-all">
+          <button
+            onClick={() => setIsCsvImporterOpen(true)}
+            className="bg-white border border-slate-200 text-slate-700 px-5 h-12 rounded-[16px] font-semibold text-sm flex items-center gap-2 hover:bg-slate-50 shadow-sm transition-all"
+          >
             <Upload className="h-4 w-4 text-slate-500" />
-            {isUploadingCSV ? "Uploading..." : "Upload CSV"}
-            <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={isUploadingCSV} />
-          </label>
+            Upload CSV
+          </button>
 
           <button
             type="button"
@@ -678,6 +731,29 @@ export default function LeadershipPage() {
           </div>
         </div>
       )}
+
+      {/* Smart CSV Importer */}
+      <SmartCsvImporter
+        isOpen={isCsvImporterOpen}
+        onClose={() => setIsCsvImporterOpen(false)}
+        title="Import Leadership & Alumni (CSV)"
+        description="Smart column mapping for Executive, Alumni, Advisory, and Taskforce Google Forms / Sheets."
+        targetFields={LEADERSHIP_TARGET_FIELDS}
+        defaultValues={{
+          type: "executive",
+          designation: "Executive Member"
+        }}
+        sampleTemplateData={{
+          headers: ["Timestamp", "Full Name", "Designation", "Category", "Batch", "Upload Photo", "Facebook Profile URL", "LinkedIn Profile URL", "Email Address"],
+          sampleRows: [
+            ["2024-01-15 10:20:30", "Md. Tanvir Hasan", "President", "executive", "19", "https://picsum.photos/400", "https://facebook.com/tanvir", "https://linkedin.com/in/tanvir", "tanvir@cechstu.org"],
+            ["2024-01-15 11:30:15", "Dr. Engr. Mahmudur Rahman", "Chief Advisor", "advisory", "A", "https://picsum.photos/401", "", "https://linkedin.com/in/mahmud", "mahmud@hstu.ac.bd"],
+            ["2024-01-15 12:45:00", "Sadia Islam", "Former General Secretary", "alumni", "18", "https://picsum.photos/402", "https://facebook.com/sadia", "https://linkedin.com/in/sadia", "sadia@alumni.org"]
+          ],
+          filename: "leadership_sample_template.csv"
+        }}
+        onImport={handleSmartCsvImport}
+      />
     </div>
   );
 }
