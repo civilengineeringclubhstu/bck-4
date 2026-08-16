@@ -26,11 +26,6 @@ import {
   X, 
   FileText,
   AlertCircle,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  ArrowUpToLine,
-  ArrowDownToLine,
   User,
   Tag,
   Clock,
@@ -56,8 +51,6 @@ interface BlogPost {
   coverImageUrl: string;
   displayInFrontend?: boolean;
   status?: "published" | "draft";
-  order?: number;
-  position?: number;
   createdAt: number;
 }
 
@@ -74,9 +67,6 @@ export default function BlogPage() {
   // Selection state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
-  const [isReordering, setIsReordering] = useState(false);
-  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
-  const [orderActionLoading, setOrderActionLoading] = useState<string | null>(null);
 
   // Tracks whether the user has manually typed into the Excerpt box during
   // the current create/edit session. When false, the excerpt is always
@@ -96,7 +86,6 @@ export default function BlogPage() {
     coverImageUrl: "",
     descriptionMarkdown: "",
     displayInFrontend: true,
-    order: 1,
   });
 
   const fetchPosts = useCallback(async () => {
@@ -124,21 +113,12 @@ export default function BlogPage() {
           coverImageUrl: docData.coverImageUrl || docData.imageUrl || "",
           displayInFrontend: docData.displayInFrontend !== undefined ? Boolean(docData.displayInFrontend) : true,
           status: docData.status || (docData.displayInFrontend === false ? "draft" : "published"),
-          order: typeof docData.order === "number" ? docData.order : (typeof docData.position === "number" ? docData.position : undefined),
-          position: typeof docData.position === "number" ? docData.position : docData.order,
           createdAt: docData.createdAt || 0,
         } as BlogPost;
       });
 
-      // Sort by order ascending if specified, then createdAt descending
-      data.sort((a, b) => {
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order;
-        }
-        if (a.order !== undefined) return -1;
-        if (b.order !== undefined) return 1;
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      });
+      // Sort by createdAt descending (newest first)
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
       setPosts(data);
       setError(null);
@@ -164,116 +144,6 @@ export default function BlogPage() {
     });
     return Array.from(set);
   }, [posts]);
-
-  // Persist reordered array to Firestore
-  const persistOrder = async (updatedPosts: BlogPost[]) => {
-    setIsReordering(true);
-    try {
-      const batch = writeBatch(db);
-      updatedPosts.forEach((post, index) => {
-        const newOrder = index + 1;
-        batch.update(doc(db, "blogs", post.id), { 
-          order: newOrder,
-          position: newOrder 
-        });
-      });
-      await batch.commit();
-    } catch (err: any) {
-      console.error("Error saving post order to Firestore:", err);
-      alert("Failed to save new order to database: " + err.message);
-      fetchPosts(); // Rollback
-    } finally {
-      setIsReordering(false);
-      setOrderActionLoading(null);
-    }
-  };
-
-  // Move a post up or down by 1 position
-  const handleMovePost = async (postId: string, direction: "up" | "down", e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isReordering) return;
-
-    const currentIndex = posts.findIndex(p => p.id === postId);
-    if (currentIndex === -1) return;
-
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= posts.length) return;
-
-    setOrderActionLoading(postId);
-
-    const reordered = [...posts];
-    const [movedPost] = reordered.splice(currentIndex, 1);
-    reordered.splice(targetIndex, 0, movedPost);
-
-    const normalized = reordered.map((p, idx) => ({ ...p, order: idx + 1, position: idx + 1 }));
-    setPosts(normalized);
-
-    await persistOrder(normalized);
-  };
-
-  // Move a post directly to Top (#1)
-  const handleMoveToTop = async (postId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isReordering) return;
-
-    const currentIndex = posts.findIndex(p => p.id === postId);
-    if (currentIndex <= 0) return;
-
-    setOrderActionLoading(postId);
-
-    const reordered = [...posts];
-    const [movedPost] = reordered.splice(currentIndex, 1);
-    reordered.unshift(movedPost);
-
-    const normalized = reordered.map((p, idx) => ({ ...p, order: idx + 1, position: idx + 1 }));
-    setPosts(normalized);
-
-    await persistOrder(normalized);
-  };
-
-  // Move a post directly to Bottom (Last #)
-  const handleMoveToBottom = async (postId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isReordering) return;
-
-    const currentIndex = posts.findIndex(p => p.id === postId);
-    if (currentIndex === -1 || currentIndex === posts.length - 1) return;
-
-    setOrderActionLoading(postId);
-
-    const reordered = [...posts];
-    const [movedPost] = reordered.splice(currentIndex, 1);
-    reordered.push(movedPost);
-
-    const normalized = reordered.map((p, idx) => ({ ...p, order: idx + 1, position: idx + 1 }));
-    setPosts(normalized);
-
-    await persistOrder(normalized);
-  };
-
-  // Set explicit custom position rank
-  const handleSetCustomPosition = async (postId: string, targetRank: number) => {
-    if (isNaN(targetRank) || targetRank < 1 || targetRank > posts.length) {
-      alert(`Please enter a valid rank between 1 and ${posts.length}.`);
-      return;
-    }
-
-    const currentIndex = posts.findIndex(p => p.id === postId);
-    if (currentIndex === -1) return;
-    const targetIndex = targetRank - 1;
-    if (currentIndex === targetIndex) return;
-
-    setOrderActionLoading(postId);
-
-    const reordered = [...posts];
-    const [movedPost] = reordered.splice(currentIndex, 1);
-    reordered.splice(targetIndex, 0, movedPost);
-
-    const normalized = reordered.map((p, idx) => ({ ...p, order: idx + 1, position: idx + 1 }));
-    setPosts(normalized);
-
-    await persistOrder(normalized);
-  };
 
   // Filtered posts
   const filteredPosts = useMemo(() => {
@@ -422,10 +292,6 @@ export default function BlogPage() {
         ? formData.excerpt.trim()
         : autoExcerpt;
 
-      const finalOrder = typeof formData.order === "number" && !isNaN(formData.order) && formData.order > 0
-        ? formData.order
-        : (posts.length > 0 ? posts.length + 1 : 1);
-
       const payload: any = {
         title: rawTitle,
         slug: slug,
@@ -445,8 +311,6 @@ export default function BlogPage() {
         imageUrl: formData.coverImageUrl.trim(),
         displayInFrontend: formData.displayInFrontend,
         status: formData.displayInFrontend ? "published" : "draft",
-        order: finalOrder,
-        position: finalOrder,
         updatedAt: Date.now()
       };
 
@@ -480,7 +344,6 @@ export default function BlogPage() {
   };
 
   const openEditModal = (post: BlogPost) => {
-    const postIndex = posts.findIndex(p => p.id === post.id);
     setFormData({
       title: post.title || "",
       authorName: post.authorName || post.author || "",
@@ -493,7 +356,6 @@ export default function BlogPage() {
       coverImageUrl: post.coverImageUrl || "",
       descriptionMarkdown: post.descriptionMarkdown || post.content || "",
       displayInFrontend: post.displayInFrontend !== false,
-      order: post.order !== undefined ? post.order : (postIndex !== -1 ? postIndex + 1 : 1),
     });
     setEditingId(post.id);
     setExcerptTouched(false);
@@ -513,7 +375,6 @@ export default function BlogPage() {
       coverImageUrl: "",
       descriptionMarkdown: "", 
       displayInFrontend: true,
-      order: posts.length + 1
     });
     setEditingId(null);
     setExcerptTouched(false);
@@ -531,29 +392,13 @@ export default function BlogPage() {
             <span className="px-2.5 py-1 text-xs font-bold bg-blue-50 text-blue-700 rounded-full border border-blue-100">
               {posts.length} Posts
             </span>
-            {isReordering && (
-              <span className="px-2.5 py-1 text-xs font-bold bg-amber-50 text-amber-700 rounded-full border border-amber-200 animate-pulse flex items-center gap-1">
-                <ArrowUpDown className="w-3 h-3 animate-spin" /> Saving Order...
-              </span>
-            )}
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Publish club articles, author bios, research updates, reorder positions, and control live visibility.
+            Publish club articles, author bios, research updates, and control live visibility.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-          {posts.length > 1 && (
-            <button
-              onClick={() => setIsReorderModalOpen(true)}
-              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-3 rounded-[16px] text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all hover:scale-[1.02]"
-              title="Open Order Organizer to rearrange all blog posts"
-            >
-              <ArrowUpDown className="h-4 w-4 text-blue-600" />
-              Reorder Posts
-            </button>
-          )}
-
           <button
             onClick={() => { resetForm(); setIsModalOpen(true); }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-[16px] text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] shrink-0"
@@ -737,11 +582,6 @@ export default function BlogPage() {
             {filteredPosts.map((post) => {
               const isSelected = selectedIds.includes(post.id);
               const isLive = post.displayInFrontend !== false;
-              const globalIndex = posts.findIndex(p => p.id === post.id);
-              const displayOrder = post.order !== undefined ? post.order : (globalIndex + 1);
-              const isFirst = globalIndex === 0;
-              const isLast = globalIndex === posts.length - 1;
-              const isMoving = orderActionLoading === post.id;
               const authorDisplayName = post.authorName || post.author || "CE Club HSTU";
 
               return (
@@ -768,7 +608,7 @@ export default function BlogPage() {
                       </div>
                     )}
 
-                    {/* Top Left: Checkbox and Position Badge */}
+                    {/* Top Left: Checkbox */}
                     <div className="absolute top-3 left-3 flex items-center gap-2">
                       <button
                         type="button"
@@ -786,16 +626,9 @@ export default function BlogPage() {
                           <Square className="w-4 h-4" />
                         )}
                       </button>
-
-                      <span 
-                        className="px-2.5 py-1 rounded-xl text-xs font-black tracking-wide bg-slate-900/85 text-white backdrop-blur-md shadow-md flex items-center gap-1 border border-white/20"
-                        title={`Display Position #${displayOrder} in frontend`}
-                      >
-                        #{displayOrder}
-                      </span>
                     </div>
 
-                    {/* Top Right: Move Controls & Status Badge */}
+                    {/* Top Right: Status Badge */}
                     <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-md shadow-xs flex items-center gap-1 ${
                         isLive
@@ -805,28 +638,6 @@ export default function BlogPage() {
                         {isLive ? <Globe className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                         {isLive ? "Live" : "Hidden"}
                       </span>
-
-                      {/* Quick Move Up/Down Floating Pill */}
-                      <div className="flex items-center bg-white/95 backdrop-blur-md rounded-xl p-0.5 shadow-md border border-slate-200/80">
-                        <button
-                          type="button"
-                          disabled={isFirst || isReordering}
-                          onClick={(e) => handleMovePost(post.id, "up", e)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                          title="Move post UP (changes frontend order)"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isLast || isReordering}
-                          onClick={(e) => handleMovePost(post.id, "down", e)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                          title="Move post DOWN (changes frontend order)"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
                     </div>
                   </div>
 
@@ -883,68 +694,9 @@ export default function BlogPage() {
                       </p>
                     </div>
 
-                    {/* Position / Move Controls & Display Toggle */}
+                    {/* Display Toggle & Actions */}
                     <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col gap-2.5">
-                      {/* Position Ranking Toolbar */}
-                      <div className="bg-slate-50/90 p-2 rounded-xl border border-slate-200/70 flex items-center justify-between gap-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-bold text-slate-600">Pos:</span>
-                          <select
-                            value={displayOrder}
-                            disabled={isReordering}
-                            onChange={(e) => handleSetCustomPosition(post.id, Number(e.target.value))}
-                            className="bg-white border border-slate-200 text-xs font-bold text-slate-800 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                            title="Change position order"
-                          >
-                            {posts.map((_, idx) => (
-                              <option key={idx + 1} value={idx + 1}>
-                                #{idx + 1} {idx === 0 ? "(Top)" : idx === posts.length - 1 ? "(Last)" : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            disabled={isFirst || isReordering}
-                            onClick={(e) => handleMoveToTop(post.id, e)}
-                            className="px-1.5 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-blue-600 text-[10px] font-bold border border-slate-200/80 transition-colors disabled:opacity-40 flex items-center gap-0.5"
-                            title="Move directly to Top (#1)"
-                          >
-                            <ArrowUpToLine className="w-3 h-3" /> Top
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isFirst || isReordering}
-                            onClick={(e) => handleMovePost(post.id, "up", e)}
-                            className="p-1 text-slate-500 hover:text-blue-600 bg-white hover:bg-slate-100 rounded border border-slate-200/80 transition-colors disabled:opacity-40"
-                            title="Move Up 1 position"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isLast || isReordering}
-                            onClick={(e) => handleMovePost(post.id, "down", e)}
-                            className="p-1 text-slate-500 hover:text-blue-600 bg-white hover:bg-slate-100 rounded border border-slate-200/80 transition-colors disabled:opacity-40"
-                            title="Move Down 1 position"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isLast || isReordering}
-                            onClick={(e) => handleMoveToBottom(post.id, e)}
-                            className="px-1.5 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-blue-600 text-[10px] font-bold border border-slate-200/80 transition-colors disabled:opacity-40 flex items-center gap-0.5"
-                            title="Move directly to Bottom"
-                          >
-                            <ArrowDownToLine className="w-3 h-3" /> End
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Display in Frontend Move/Toggle Switch */}
+                      {/* Display in Frontend Toggle Switch */}
                       <div className="flex items-center justify-between bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/60">
                         <div className="flex items-center gap-2">
                           <Globe className={`w-4 h-4 ${isLive ? "text-emerald-600" : "text-slate-400"}`} />
@@ -994,121 +746,6 @@ export default function BlogPage() {
           </div>
         )}
       </div>
-
-      {/* Reorder Posts Organizer Modal */}
-      {isReorderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[28px] p-6 sm:p-8 w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-bold font-montserrat text-[#0F172A] flex items-center gap-2">
-                  <ArrowUpDown className="w-5 h-5 text-blue-600" />
-                  Reorder Blog Posts Sequence
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Adjust display hierarchy on the live site. Changes synchronize with database immediately.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsReorderModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto py-4 space-y-2 pr-1">
-              {posts.map((post, index) => {
-                const isFirst = index === 0;
-                const isLast = index === posts.length - 1;
-                const authorDisplay = post.authorName || post.author || "CE Club";
-
-                return (
-                  <div
-                    key={post.id}
-                    className="flex items-center justify-between gap-3 p-3 bg-slate-50 hover:bg-blue-50/40 rounded-2xl border border-slate-200/80 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
-                        #{index + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 truncate">
-                          {post.title}
-                        </p>
-                        <p className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                          <span className="font-semibold text-blue-600">{authorDisplay}</span>
-                          <span>•</span>
-                          <span className="bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-semibold">{post.category || "General"}</span>
-                          <span>•</span>
-                          <span className={post.displayInFrontend !== false ? "text-emerald-600 font-semibold" : "text-amber-600 font-semibold"}>
-                            {post.displayInFrontend !== false ? "Live" : "Hidden"}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        disabled={isFirst || isReordering}
-                        onClick={() => handleMoveToTop(post.id)}
-                        className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30 flex items-center gap-1"
-                        title="Move to Top"
-                      >
-                        <ArrowUpToLine className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Top</span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isFirst || isReordering}
-                        onClick={() => handleMovePost(post.id, "up")}
-                        className="p-1.5 bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30"
-                        title="Move Up"
-                      >
-                        <ArrowUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLast || isReordering}
-                        onClick={() => handleMovePost(post.id, "down")}
-                        className="p-1.5 bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30"
-                        title="Move Down"
-                      >
-                        <ArrowDown className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isLast || isReordering}
-                        onClick={() => handleMoveToBottom(post.id)}
-                        className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30 flex items-center gap-1"
-                        title="Move to Bottom"
-                      >
-                        <ArrowDownToLine className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Bottom</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
-                {isReordering ? "Saving updates to Firestore..." : "All positions synchronized with database."}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsReorderModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add / Edit Blog Post Modal */}
       {isModalOpen && (
@@ -1296,53 +933,34 @@ export default function BlogPage() {
                 />
               </div>
 
-              {/* Order Position in Form & Live Switch */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-[20px] border border-slate-200">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Display Sequence Rank (Order) *
-                  </label>
-                  <p className="text-[11px] text-slate-500 mb-2">
-                    #1 places this post at the very top of the live frontend.
+              {/* Live Switch in Form */}
+              <div className="bg-slate-50 p-4 rounded-[20px] border border-slate-200 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Globe className="w-4 h-4 text-blue-600" />
+                    Display in Frontend
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Toggle public visibility on the live site.
                   </p>
-                  <input
-                    type="number"
-                    min={1}
-                    value={formData.order}
-                    onChange={e => setFormData({ ...formData, order: Math.max(1, parseInt(e.target.value) || 1) })}
-                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500"
-                  />
                 </div>
 
-                {/* Display in Frontend Toggle in Form */}
-                <div className="bg-slate-50 p-4 rounded-[20px] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Globe className="w-4 h-4 text-blue-600" />
-                      Display in Frontend
-                    </h4>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Toggle public visibility on the live site.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formData.displayInFrontend}
-                    onClick={() => setFormData({ ...formData, displayInFrontend: !formData.displayInFrontend })}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                      formData.displayInFrontend ? "bg-emerald-500" : "bg-slate-300"
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={formData.displayInFrontend}
+                  onClick={() => setFormData({ ...formData, displayInFrontend: !formData.displayInFrontend })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                    formData.displayInFrontend ? "bg-emerald-500" : "bg-slate-300"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                      formData.displayInFrontend ? "translate-x-5" : "translate-x-0"
                     }`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                        formData.displayInFrontend ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
+                  />
+                </button>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">

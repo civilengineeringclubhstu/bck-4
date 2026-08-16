@@ -26,12 +26,7 @@ import {
   Globe, 
   X, 
   AlertCircle,
-  Images,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  ArrowUpToLine,
-  ArrowDownToLine
+  Images
 } from "lucide-react";
 
 interface GalleryItem {
@@ -45,8 +40,6 @@ interface Gallery {
   items: GalleryItem[];
   displayInFrontend?: boolean;
   status?: "published" | "draft";
-  order?: number;
-  position?: number;
   createdAt: number;
 }
 
@@ -55,14 +48,9 @@ export default function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "visible" | "hidden">("all");
-
-  // Reordering state
-  const [isReordering, setIsReordering] = useState(false);
-  const [orderActionLoading, setOrderActionLoading] = useState<string | null>(null);
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -72,7 +60,6 @@ export default function GalleryPage() {
   const [title, setTitle] = useState("");
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [displayInFrontend, setDisplayInFrontend] = useState(true);
-  const [order, setOrder] = useState<number>(1);
 
   const fetchGalleries = useCallback(async () => {
     setLoading(true);
@@ -86,20 +73,12 @@ export default function GalleryPage() {
           items: Array.isArray(data.items) ? data.items : [],
           displayInFrontend: data.displayInFrontend !== undefined ? Boolean(data.displayInFrontend) : true,
           status: data.status || (data.displayInFrontend === false ? "draft" : "published"),
-          order: typeof data.order === "number" ? data.order : (typeof data.position === "number" ? data.position : undefined),
           createdAt: data.createdAt || 0,
         } as Gallery;
       });
 
-      // Sort by order ascending if specified, then createdAt descending
-      list.sort((a, b) => {
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order;
-        }
-        if (a.order !== undefined) return -1;
-        if (b.order !== undefined) return 1;
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      });
+      // Sort by createdAt descending (newest first)
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
       setGalleries(list);
       setError(null);
@@ -114,116 +93,6 @@ export default function GalleryPage() {
   useEffect(() => { 
     fetchGalleries(); 
   }, [fetchGalleries]);
-
-  // Persist reordered array to Firestore
-  const persistOrder = async (updatedGalleries: Gallery[]) => {
-    setIsReordering(true);
-    try {
-      const batch = writeBatch(db);
-      updatedGalleries.forEach((gal, index) => {
-        const newOrder = index + 1;
-        batch.update(doc(db, "gallery_items", gal.id), { 
-          order: newOrder,
-          position: newOrder 
-        });
-      });
-      await batch.commit();
-    } catch (err: any) {
-      console.error("Error saving gallery order to Firestore:", err);
-      alert("Failed to save new order to database: " + err.message);
-      fetchGalleries(); // Rollback
-    } finally {
-      setIsReordering(false);
-      setOrderActionLoading(null);
-    }
-  };
-
-  // Move an album up or down by 1 position
-  const handleMoveGallery = async (galId: string, direction: "up" | "down", e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isReordering) return;
-
-    const currentIndex = galleries.findIndex(g => g.id === galId);
-    if (currentIndex === -1) return;
-
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= galleries.length) return;
-
-    setOrderActionLoading(galId);
-
-    const reordered = [...galleries];
-    const [moved] = reordered.splice(currentIndex, 1);
-    reordered.splice(targetIndex, 0, moved);
-
-    const normalized = reordered.map((g, idx) => ({ ...g, order: idx + 1 }));
-    setGalleries(normalized);
-
-    await persistOrder(normalized);
-  };
-
-  // Move directly to Top (#1)
-  const handleMoveToTop = async (galId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isReordering) return;
-
-    const currentIndex = galleries.findIndex(g => g.id === galId);
-    if (currentIndex <= 0) return;
-
-    setOrderActionLoading(galId);
-
-    const reordered = [...galleries];
-    const [moved] = reordered.splice(currentIndex, 1);
-    reordered.unshift(moved);
-
-    const normalized = reordered.map((g, idx) => ({ ...g, order: idx + 1 }));
-    setGalleries(normalized);
-
-    await persistOrder(normalized);
-  };
-
-  // Move directly to Bottom (Last #)
-  const handleMoveToBottom = async (galId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (isReordering) return;
-
-    const currentIndex = galleries.findIndex(g => g.id === galId);
-    if (currentIndex === -1 || currentIndex === galleries.length - 1) return;
-
-    setOrderActionLoading(galId);
-
-    const reordered = [...galleries];
-    const [moved] = reordered.splice(currentIndex, 1);
-    reordered.push(moved);
-
-    const normalized = reordered.map((g, idx) => ({ ...g, order: idx + 1 }));
-    setGalleries(normalized);
-
-    await persistOrder(normalized);
-  };
-
-  // Set explicit custom position rank
-  const handleSetCustomPosition = async (galId: string, targetRank: number) => {
-    if (isNaN(targetRank) || targetRank < 1 || targetRank > galleries.length) {
-      alert(`Please enter a valid rank between 1 and ${galleries.length}.`);
-      return;
-    }
-
-    const currentIndex = galleries.findIndex(g => g.id === galId);
-    if (currentIndex === -1) return;
-    const targetIndex = targetRank - 1;
-    if (currentIndex === targetIndex) return;
-
-    setOrderActionLoading(galId);
-
-    const reordered = [...galleries];
-    const [moved] = reordered.splice(currentIndex, 1);
-    reordered.splice(targetIndex, 0, moved);
-
-    const normalized = reordered.map((g, idx) => ({ ...g, order: idx + 1 }));
-    setGalleries(normalized);
-
-    await persistOrder(normalized);
-  };
 
   // Filtered galleries
   const filteredGalleries = useMemo(() => {
@@ -347,17 +216,14 @@ export default function GalleryPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalOrder = typeof order === "number" && !isNaN(order) && order > 0 
-      ? order 
-      : (galleries.length > 0 ? galleries.length + 1 : 1);
+    if (!title.trim()) return;
 
     const payload: any = { 
       title: title.trim(), 
       items,
       displayInFrontend,
       status: displayInFrontend ? "published" : "draft",
-      order: finalOrder,
-      position: finalOrder
+      updatedAt: Date.now()
     };
 
     try {
@@ -410,34 +276,18 @@ export default function GalleryPage() {
             <span className="px-2.5 py-1 text-xs font-bold bg-blue-50 text-blue-700 rounded-full border border-blue-100">
               {galleries.length} Albums
             </span>
-            {isReordering && (
-              <span className="px-2.5 py-1 text-xs font-bold bg-amber-50 text-amber-700 rounded-full border border-amber-200 animate-pulse flex items-center gap-1">
-                <ArrowUpDown className="w-3 h-3 animate-spin" /> Saving Order...
-              </span>
-            )}
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Organize photo albums, project videos, reorder position hierarchy, and control frontend display status.
+            Organize photo albums, project videos, and control frontend display status.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-          {galleries.length > 1 && (
-            <button
-              onClick={() => setIsReorderModalOpen(true)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-4 py-3 rounded-[16px] text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all hover:scale-[1.02]"
-              title="Open Position Reorder Organizer"
-            >
-              <ArrowUpDown className="h-4 w-4 text-blue-600" /> Reorder Albums
-            </button>
-          )}
-
           <button 
             onClick={() => { 
               setTitle(""); 
               setItems([]); 
               setDisplayInFrontend(true);
-              setOrder(galleries.length + 1);
               setEditingId(null); 
               setIsModalOpen(true); 
             }} 
@@ -601,11 +451,6 @@ export default function GalleryPage() {
             {filteredGalleries.map((gal) => {
               const isSelected = selectedIds.includes(gal.id);
               const isLive = gal.displayInFrontend !== false;
-              const globalIndex = galleries.findIndex(g => g.id === gal.id);
-              const displayOrder = gal.order !== undefined ? gal.order : globalIndex + 1;
-              const isFirst = globalIndex === 0;
-              const isLast = globalIndex === galleries.length - 1;
-              const isActionLoading = orderActionLoading === gal.id;
 
               return (
                 <div 
@@ -617,7 +462,7 @@ export default function GalleryPage() {
                   }`}
                 >
                   <div>
-                    {/* Top Row: Selection Checkbox, Position Badge, Title, Status, Quick Move */}
+                    {/* Top Row: Selection Checkbox, Title, Status */}
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex items-start gap-2.5 min-w-0">
                         <button
@@ -636,14 +481,6 @@ export default function GalleryPage() {
                           )}
                         </button>
 
-                        {/* Position Rank Badge */}
-                        <div 
-                          className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-700 text-[11px] font-extrabold shrink-0 shadow-2xs flex items-center gap-0.5"
-                          title={`Display Order Position #${displayOrder}`}
-                        >
-                          <span>#{displayOrder}</span>
-                        </div>
-
                         <div className="min-w-0">
                           <h3 className="font-bold text-[#0F172A] text-lg leading-tight group-hover:text-blue-600 transition-colors truncate">
                             {gal.title}
@@ -655,28 +492,6 @@ export default function GalleryPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Quick Up / Down Arrows */}
-                        <div className="flex items-center bg-slate-100/90 rounded-lg p-0.5 border border-slate-200/80">
-                          <button
-                            type="button"
-                            disabled={isFirst || isActionLoading}
-                            onClick={(e) => handleMoveGallery(gal.id, "up", e)}
-                            className="p-1 text-slate-600 hover:text-blue-600 hover:bg-white rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                            title="Move Up 1 Position"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isLast || isActionLoading}
-                            onClick={(e) => handleMoveGallery(gal.id, "down", e)}
-                            className="p-1 text-slate-600 hover:text-blue-600 hover:bg-white rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                            title="Move Down 1 Position"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${
                           isLive
                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
@@ -708,67 +523,8 @@ export default function GalleryPage() {
                     </div>
                   </div>
 
-                  {/* Order Rank Bar & Display in Frontend Toggle */}
+                  {/* Display in Frontend Toggle & Card Actions */}
                   <div className="pt-3 border-t border-slate-100 flex flex-col gap-2.5">
-                    {/* Position Organizer Toolbar */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50/90 p-2 rounded-xl border border-slate-200/70">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-bold text-slate-600">Position:</span>
-                        <select
-                          value={displayOrder}
-                          onChange={(e) => handleSetCustomPosition(gal.id, parseInt(e.target.value))}
-                          disabled={isActionLoading}
-                          className="bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                          title="Change display sequence rank"
-                        >
-                          {galleries.map((_, idx) => (
-                            <option key={idx + 1} value={idx + 1}>
-                              #{idx + 1} {idx === 0 ? "(Top)" : idx === galleries.length - 1 ? "(Last)" : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => handleMoveToTop(gal.id, e)}
-                          disabled={isFirst || isActionLoading}
-                          className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-blue-600 text-[11px] font-bold border border-slate-200/80 transition-colors disabled:opacity-40 flex items-center gap-1"
-                          title="Move to #1 (Top)"
-                        >
-                          <ArrowUpToLine className="w-3 h-3" /> Top
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleMoveGallery(gal.id, "up", e)}
-                          disabled={isFirst || isActionLoading}
-                          className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-blue-600 text-[11px] font-bold border border-slate-200/80 transition-colors disabled:opacity-40 flex items-center gap-1"
-                          title="Move Up"
-                        >
-                          <ArrowUp className="w-3 h-3" /> Up
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleMoveGallery(gal.id, "down", e)}
-                          disabled={isLast || isActionLoading}
-                          className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-blue-600 text-[11px] font-bold border border-slate-200/80 transition-colors disabled:opacity-40 flex items-center gap-1"
-                          title="Move Down"
-                        >
-                          <ArrowDown className="w-3 h-3" /> Down
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleMoveToBottom(gal.id, e)}
-                          disabled={isLast || isActionLoading}
-                          className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-blue-600 text-[11px] font-bold border border-slate-200/80 transition-colors disabled:opacity-40 flex items-center gap-1"
-                          title="Move to Last"
-                        >
-                          <ArrowDownToLine className="w-3 h-3" /> Bottom
-                        </button>
-                      </div>
-                    </div>
-
                     {/* Display in Frontend Toggle Switch */}
                     <div className="flex items-center justify-between bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/60">
                       <div className="flex items-center gap-2">
@@ -803,7 +559,6 @@ export default function GalleryPage() {
                           setTitle(gal.title); 
                           setItems(gal.items || []); 
                           setDisplayInFrontend(gal.displayInFrontend !== false);
-                          setOrder(gal.order !== undefined ? gal.order : globalIndex + 1);
                           setEditingId(gal.id); 
                           setIsModalOpen(true); 
                         }} 
@@ -825,117 +580,6 @@ export default function GalleryPage() {
           </div>
         )}
       </div>
-
-      {/* Reorder Albums Organizer Modal */}
-      {isReorderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-[28px] p-6 sm:p-8 w-full max-w-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[88vh]">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-bold font-montserrat text-[#0F172A] flex items-center gap-2">
-                  <ArrowUpDown className="w-5 h-5 text-blue-600" />
-                  Reorder Gallery Albums Sequence
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Adjust display hierarchy on the live site. Changes save to database immediately.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsReorderModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* List for fast reordering */}
-            <div className="flex-1 overflow-y-auto py-4 space-y-2 pr-1">
-              {galleries.map((gal, index) => {
-                const isFirst = index === 0;
-                const isLast = index === galleries.length - 1;
-                const isLive = gal.displayInFrontend !== false;
-
-                return (
-                  <div
-                    key={gal.id}
-                    className="flex items-center justify-between gap-3 p-3 bg-slate-50 hover:bg-blue-50/40 rounded-2xl border border-slate-200/80 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
-                        #{index + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 truncate">
-                          {gal.title}
-                        </p>
-                        <p className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                          <span>{gal.items?.length || 0} media</span>
-                          <span>•</span>
-                          <span className={isLive ? "text-emerald-600 font-semibold" : "text-amber-600 font-semibold"}>
-                            {isLive ? "Live" : "Hidden"}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleMoveToTop(gal.id)}
-                        disabled={isFirst || isReordering}
-                        className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30 flex items-center gap-1"
-                        title="Move to Top"
-                      >
-                        <ArrowUpToLine className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Top</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveGallery(gal.id, "up")}
-                        disabled={isFirst || isReordering}
-                        className="p-1.5 bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30"
-                        title="Move Up"
-                      >
-                        <ArrowUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveGallery(gal.id, "down")}
-                        disabled={isLast || isReordering}
-                        className="p-1.5 bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30"
-                        title="Move Down"
-                      >
-                        <ArrowDown className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveToBottom(gal.id)}
-                        disabled={isLast || isReordering}
-                        className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 rounded-xl transition-all disabled:opacity-30 flex items-center gap-1"
-                        title="Move to Bottom"
-                      >
-                        <ArrowDownToLine className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Bottom</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => setIsReorderModalOpen(false)}
-                className="px-6 py-2.5 rounded-[16px] bg-slate-900 text-xs font-bold text-white shadow-sm hover:bg-slate-800 transition-all"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add / Edit Gallery Modal */}
       {isModalOpen && (
@@ -964,25 +608,6 @@ export default function GalleryPage() {
                   value={title} 
                   onChange={e=>setTitle(e.target.value)} 
                 />
-              </div>
-
-              {/* Display Position / Order Field */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  Display Sequence Rank (Order) *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  placeholder="e.g. 1 (Top position)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-[16px] p-3.5 text-sm text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  value={order}
-                  onChange={(e) => setOrder(parseInt(e.target.value) || 1)}
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  1 places this gallery album at the very top of the live gallery page.
-                </p>
               </div>
               
               <div>
