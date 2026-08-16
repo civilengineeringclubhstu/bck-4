@@ -78,6 +78,12 @@ export default function BlogPage() {
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [orderActionLoading, setOrderActionLoading] = useState<string | null>(null);
 
+  // Tracks whether the user has manually typed into the Excerpt box during
+  // the current create/edit session. When false, the excerpt is always
+  // regenerated from the latest Content Body on save, so editing the
+  // description without touching the excerpt box keeps them in sync.
+  const [excerptTouched, setExcerptTouched] = useState(false);
+
   const [formData, setFormData] = useState({
     title: "",
     authorName: "",
@@ -408,8 +414,13 @@ export default function BlogPage() {
       const tagsArray = formData.tags
         ? formData.tags.split(",").map(t => t.trim()).filter(Boolean)
         : [];
-      const excerptVal = formData.excerpt.trim() || 
-        (formData.descriptionMarkdown.replace(/[#*`_\[\]]/g, "").slice(0, 160) + (formData.descriptionMarkdown.length > 160 ? "..." : ""));
+      const autoExcerpt = formData.descriptionMarkdown.replace(/[#*`_\[\]]/g, "").trim().slice(0, 160) + (formData.descriptionMarkdown.trim().length > 160 ? "..." : "");
+      // Only keep a manually typed excerpt if the user actually edited the
+      // box this session; otherwise always derive it fresh from the
+      // Content Body so it never goes stale after editing the description.
+      const excerptVal = (excerptTouched && formData.excerpt.trim())
+        ? formData.excerpt.trim()
+        : autoExcerpt;
 
       const finalOrder = typeof formData.order === "number" && !isNaN(formData.order) && formData.order > 0
         ? formData.order
@@ -485,6 +496,7 @@ export default function BlogPage() {
       order: post.order !== undefined ? post.order : (postIndex !== -1 ? postIndex + 1 : 1),
     });
     setEditingId(post.id);
+    setExcerptTouched(false);
     setIsModalOpen(true);
   };
 
@@ -504,6 +516,7 @@ export default function BlogPage() {
       order: posts.length + 1
     });
     setEditingId(null);
+    setExcerptTouched(false);
   };
 
   return (
@@ -1248,12 +1261,18 @@ export default function BlogPage() {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">
                   Short Excerpt / Summary (Optional)
                 </label>
+                <p className="text-[11px] text-slate-400 mb-1.5 -mt-1">
+                  Leave blank to auto-generate from Content Body on every save. If you type here, this exact text is locked in and won&apos;t update automatically anymore.
+                </p>
                 <input
                   type="text"
                   placeholder="Brief preview sentence for the card..."
                   className="w-full rounded-[16px] border border-slate-200 bg-slate-50 p-3 text-xs text-[#0F172A] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   value={formData.excerpt}
-                  onChange={e => setFormData({...formData, excerpt: e.target.value})}
+                  onChange={e => {
+                    setExcerptTouched(true);
+                    setFormData({...formData, excerpt: e.target.value});
+                  }}
                 />
               </div>
 
